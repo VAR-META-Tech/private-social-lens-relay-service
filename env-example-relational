@@ -114,3 +114,6 @@ SUI_GAS_BUDGET=1000000000
 SUI_PACKAGE_ID=0xf2433262bd55b30c1cddbae940a2355086cfe2850bd62583bdfcad7c57b17956
 
 SUI_WALRUS_RELAY_URL=https://upload-relay.testnet.walrus.space
+
+# Nautilus TEE Configuration
+NAUTILUS_URL=

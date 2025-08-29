@@ -7,13 +7,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
-  ApiBody,
   ApiHeader,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
 import { ApiKeyGuard } from '../auth/api-key.guard';
+import { EncryptChatDto, EncryptChatResponseDto } from './dto';
 import { NautilusService } from './nautilus.service';
 
 @ApiTags('Nautilus Relay')
@@ -30,21 +30,17 @@ export class NautilusController {
   @Post('encrypt')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Encrypt raw chat data',
+    summary: 'Encrypt raw chat data using Nautilus TEE',
+    description:
+      'Encrypts Telegram chat data using Nautilus Trusted Execution Environment for secure processing',
   })
-  @ApiBody({ type: String })
   @ApiOkResponse({
-    schema: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean' },
-        encryptedData: { type: 'string' },
-        message: { type: 'string' },
-        error: { type: 'string', nullable: true },
-      },
-    },
+    description: 'Successfully encrypted chat data',
+    type: EncryptChatResponseDto,
   })
-  async encryptChats(@Body() body: { telegramChats: string }) {
+  async encryptChats(
+    @Body() body: EncryptChatDto,
+  ): Promise<EncryptChatResponseDto> {
     try {
       const encryptedData = await this.nautilusService.encryptData(
         body.telegramChats,
