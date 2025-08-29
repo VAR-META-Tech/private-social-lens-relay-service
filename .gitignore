@@ -40,5 +40,4 @@ lerna-debug.log*
 .env.*
 /ormconfig.json
 .codegpt
-
-.wallet-storage/
+.tool-versions

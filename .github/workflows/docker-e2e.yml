@@ -2,28 +2,26 @@ name: NestJS API CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
       # <database-relational-block>
-      - name: Run e2e tests for NestJS with TypeORM
+      - name: Run e2e tests using Makefile
         id: relational
-        run: docker compose -f docker-compose.relational.ci.yaml --env-file env-example-relational -p ci-relational up --build --exit-code-from api
+        run: make ci
 
       - name: Copy prod.log from container to host
         if: ${{ failure() && steps.relational.conclusion == 'failure' }}
         run: docker cp ci-relational-api-1:/usr/src/app/prod.log .
       # </database-relational-block>
-
-      
 
       - name: Upload prod.log to artifacts for debugging
         if: failure()
@@ -31,3 +29,64 @@ jobs:
         with:
           name: prod-logs
           path: prod.log
+
+  build-image-and-deploy:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Harbor
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.HARBOR_REGISTRY }}
+          username: ${{ secrets.HARBOR_USERNAME }}
+          password: ${{ secrets.HARBOR_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.HARBOR_REGISTRY }}/dfusion-vana/relay-service
+          tags: |
+            type=ref,event=branch
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Update K8s deployment
+        run: |
+          # Extract the SHA tag from metadata
+          NEW_TAG=$(echo '${{ steps.meta.outputs.tags }}' | grep 'sha-' | head -n1 | cut -d':' -f2)
+          echo "New tag: $NEW_TAG"
+          
+          # Clone the workload repo
+          git clone https://oauth2:${{ secrets.GITLAB_TOKEN }}@gitlab.var-meta.com/foundation/infrastructure/workload-dev.git
+          cd workload-dev
+          
+          # Configure git
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          
+          # Update the image tag in variables.yaml
+          sed -i "s/tag: .*/tag: $NEW_TAG/" dfustion-vana/relay-service/secrets/variables.yaml
+          
+          # Commit and push changes
+          git add dfustion-vana/relay-service/secrets/variables.yaml
+          git commit -m "Update relay-service image tag to $NEW_TAG"
+          git push
